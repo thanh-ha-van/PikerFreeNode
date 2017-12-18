@@ -6,7 +6,7 @@ admin.initializeApp(functions.config().firebase);
  * Triggers when a user gets a new message
  */
 
-exports.sendMessNotification = functions.database.ref('/notifications/messages/{pushId}')
+exports.sendMess = functions.database.ref('/notifications/messages/{pushId}')
     .onWrite(event => {
         const message = event.data.current.val();
         const senderUid = message.from;
@@ -48,7 +48,7 @@ exports.sendMessNotification = functions.database.ref('/notifications/messages/{
 /**
  * Triggers when a user gets a new follower
  */
-exports.sendFollowerNotification = functions.database.ref('/notifications/followers/{pushId}')
+exports.sendFollower = functions.database.ref('/notifications/followers/{pushId}')
     .onWrite(event => {
 
         const message = event.data.current.val();
@@ -77,7 +77,8 @@ exports.sendFollowerNotification = functions.database.ref('/notifications/follow
                 },
                 data: {
                     type: "2", // 3 mean follower notification
-                    dataID: message.body
+                    dataID: message.body,
+                    body: "User" + sender.displayName + " is following yous."
                 }
             };
 
@@ -95,7 +96,7 @@ exports.sendFollowerNotification = functions.database.ref('/notifications/follow
 /**
  * Triggers when a user send request to a post
  */
-exports.sendPostRequestNotification = functions.database.ref('/notifications/requesting/{pushId}')
+exports.sendPostRequest = functions.database.ref('/notifications/requesting/{pushId}')
     .onWrite(event => {
 
         const message = event.data.current.val(); // 
@@ -106,7 +107,7 @@ exports.sendPostRequestNotification = functions.database.ref('/notifications/req
         const getInstanceIdPromise = admin.database().ref(`/users/${receiverUid}/instanceId`).once('value');
         const getSenderUidPromise = admin.auth().getUser(senderUid);
 
-        return Promise.all([getInstanceIdPromise, getSenderUidPromise] ).then(results => {
+        return Promise.all([getInstanceIdPromise, getSenderUidPromise]).then(results => {
 
             const instanceId = results[0].val();
             const sender = results[1];
@@ -120,13 +121,14 @@ exports.sendPostRequestNotification = functions.database.ref('/notifications/req
                 },
                 data: {
                     type: "3", // 3 mean request notification
-                    dataID: message.body
+                    dataID: message.body,
+                    body: "Your post got new request from" + sender.displayName
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
-                    
+
                     console.log("Successfully sent message:", response);
                 })
                 .catch(function (error) {
@@ -138,7 +140,7 @@ exports.sendPostRequestNotification = functions.database.ref('/notifications/req
 /**
  * Triggers when user who being followed post new post.
  */
-exports.setNewPostNotification = functions.database.ref('/notifications/newPost/{pushId}')
+exports.sendNewPost = functions.database.ref('/notifications/newPost/{pushId}')
     .onWrite(event => {
 
         const message = event.data.current.val(); // 
@@ -161,8 +163,10 @@ exports.setNewPostNotification = functions.database.ref('/notifications/newPost/
                     body: "The user that you are following have new post. Click to view this post.",
                 },
                 data: {
-                    type: "4", // 4 mean post notification
-                    dataID: message.body
+
+                    type: "4",
+                    dataID: message.body,
+                    body: "User" + sender.displayName + " have new post."
                 }
             };
 
@@ -179,7 +183,7 @@ exports.setNewPostNotification = functions.database.ref('/notifications/newPost/
 /**
  * Triggers when user go granted post notification
  */
-exports.sendRequestNotification = functions.database.ref('/notifications/granted/{pushId}')
+exports.sendGranted = functions.database.ref('/notifications/granted/{pushId}')
     .onWrite(event => {
 
         const message = event.data.current.val(); // 
@@ -204,9 +208,9 @@ exports.sendRequestNotification = functions.database.ref('/notifications/granted
                 },
                 data: {
                     type: "5", // 4 mean granted post notification
-                    dataID: message.body
+                    dataID: message.body,
+                    body: "User" + sender.displayName + " granted you at post " + message.body
                 }
-
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
@@ -220,3 +224,26 @@ exports.sendRequestNotification = functions.database.ref('/notifications/granted
         });
     });
 
+// Cut off time. Child nodes older than this will be deleted.
+const CUT_OFF_TIME = 2 * 60 * 60 * 1000; // 2 Hours in milliseconds.
+
+/**
+ * This database triggered function will check for child nodes that are older than the
+ * cut-off time. Each child needs to have a `timestamp` attribute.
+ */
+exports.deleteOldItems = functions.database.ref('/notifications/{categoryId}/{pushId}')
+    .onWrite(event => {
+      const ref = event.data.ref.parent; // reference to the items
+      const now = Date.now();
+      const cutoff = now - CUT_OFF_TIME;
+      const oldItemsQuery = ref.orderByChild('timestamp').endAt(cutoff);
+      return oldItemsQuery.once('value').then(snapshot => {
+        // create a map with all children that need to be removed
+        const updates = {};
+        snapshot.forEach(child => {
+          updates[child.key] = null;
+        });
+        // execute all updates in one go and return the result to end the function
+        return ref.update(updates);
+      });
+    });
