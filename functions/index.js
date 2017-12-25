@@ -31,12 +31,19 @@ exports.sendMess = functions.database.ref('/notifications/messages/{pushId}')
                 notification: {
                     title: "New message from: " + sender.displayName,
                     body: message.body,
+                },
+                data: {
+
+                    title: "New message from: " + sender.displayName,
+                    type: "1", // 3 mean follower notification
+                    body: message.body,
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
                     console.log("Successfully sent message:", response);
+                    console.log('Data:' + payload.data);
                 })
                 .catch(function (error) {
                     console.log("Error sending message:", error);
@@ -68,7 +75,7 @@ exports.sendFollower = functions.database.ref('/notifications/followers/{pushId}
         return Promise.all([getInstanceIdPromise, getSenderUidPromise]).then(results => {
             const instanceId = results[0].val();
             const sender = results[1];
-            console.log('notifying ' + receiverUid + ' about ' + message.body + ' from ' + senderUid);
+            console.log('Sending follower notification ' + receiverUid + ' about ' + message.body + ' from ' + senderUid);
 
             const payload = {
                 notification: {
@@ -76,15 +83,18 @@ exports.sendFollower = functions.database.ref('/notifications/followers/{pushId}
                     body: sender.displayName + " is following you"
                 },
                 data: {
+                    title: "You have a new follower!",
                     type: "2", // 3 mean follower notification
                     dataID: message.body,
-                    body: "User" + sender.displayName + " is following yous."
+                    body: "User " + sender.displayName + " is following you."
+                    
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
                     console.log("Successfully sent message:", response);
+                    console.log('Data:' + payload.data);
                 })
                 .catch(function (error) {
                     console.log("Error sending message:", error);
@@ -120,16 +130,17 @@ exports.sendPostRequest = functions.database.ref('/notifications/requesting/{pus
                     body: sender.displayName + " send you a request",
                 },
                 data: {
+                    title: "Your post got new request",
                     type: "3", // 3 mean request notification
                     dataID: message.body,
-                    body: "Your post got new request from" + sender.displayName
+                    body: "Your post got new request from " + sender.displayName
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
-
                     console.log("Successfully sent message:", response);
+                    console.log('Data:' + payload.data);
                 })
                 .catch(function (error) {
                     console.log("Error sending message:", error);
@@ -163,16 +174,17 @@ exports.sendNewPost = functions.database.ref('/notifications/newPost/{pushId}')
                     body: "The user that you are following have new post. Click to view this post.",
                 },
                 data: {
-
+                    title: sender.displayName + " have a new post.",
                     type: "4",
                     dataID: message.body,
-                    body: "User" + sender.displayName + " have new post."
+                    body: "User " + sender.displayName + " have new post."
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
                     console.log("Successfully sent message:", response);
+                    console.log('Data:' + payload.data);
                 })
                 .catch(function (error) {
                     console.log("Error sending message:", error);
@@ -207,15 +219,17 @@ exports.sendGranted = functions.database.ref('/notifications/granted/{pushId}')
                     body: "The post that you sent request had been granted to you. Click to view this post.",
                 },
                 data: {
+                    title: sender.displayName + " granted you",
                     type: "5", // 4 mean granted post notification
                     dataID: message.body,
-                    body: "User" + sender.displayName + " granted you at post " + message.body
+                    body: "User " + sender.displayName + " granted you at post " + message.body
                 }
             };
 
             admin.messaging().sendToDevice(instanceId, payload)
                 .then(function (response) {
                     console.log("Successfully sent message:", response);
+                    console.log('Data:' + payload.data);
                 })
                 .catch(function (error) {
                     console.log("Error sending message:", error);
@@ -225,7 +239,7 @@ exports.sendGranted = functions.database.ref('/notifications/granted/{pushId}')
     });
 
 // Cut off time. Child nodes older than this will be deleted.
-const CUT_OFF_TIME = 2 * 60 * 60 * 1000; // 2 Hours in milliseconds.
+const CUT_OFF_TIME = 12 * 60 * 60 * 1000; // 12 Hours in milliseconds.
 
 /**
  * This database triggered function will check for child nodes that are older than the
@@ -233,17 +247,17 @@ const CUT_OFF_TIME = 2 * 60 * 60 * 1000; // 2 Hours in milliseconds.
  */
 exports.deleteOldItems = functions.database.ref('/notifications/{categoryId}/{pushId}')
     .onWrite(event => {
-      const ref = event.data.ref.parent; // reference to the items
-      const now = Date.now();
-      const cutoff = now - CUT_OFF_TIME;
-      const oldItemsQuery = ref.orderByChild('timestamp').endAt(cutoff);
-      return oldItemsQuery.once('value').then(snapshot => {
-        // create a map with all children that need to be removed
-        const updates = {};
-        snapshot.forEach(child => {
-          updates[child.key] = null;
+        const ref = event.data.ref.parent; // reference to the items
+        const now = Date.now();
+        const cutoff = now - CUT_OFF_TIME;
+        const oldItemsQuery = ref.orderByChild('timestamp').endAt(cutoff);
+        return oldItemsQuery.once('value').then(snapshot => {
+            // create a map with all children that need to be removed
+            const updates = {};
+            snapshot.forEach(child => {
+                updates[child.key] = null;
+            });
+            // execute all updates in one go and return the result to end the function
+            return ref.update(updates);
         });
-        // execute all updates in one go and return the result to end the function
-        return ref.update(updates);
-      });
     });
